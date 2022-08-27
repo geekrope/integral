@@ -1,4 +1,5 @@
 "use strict";
+const dx = 1e-3;
 function getJSFunction(expression) {
     const code = `(x) => { return ${expression}; }`;
     return eval(code);
@@ -6,17 +7,49 @@ function getJSFunction(expression) {
 function trapezeArea(base1, base2, height) {
     return (base1 + base2) / 2 * height;
 }
-function* integrate(expression, dx, minX, maxX) {
-    let area = 0;
-    for (let n = 0; n < Math.floor((maxX - minX) / dx); n++) {
-        const x = minX + n * dx;
-        const y1 = expression(x);
-        const y2 = expression(x + dx);
-        if (!isNaN(y1) && isFinite(y1) && !isNaN(y2) && isFinite(y2)) {
-            const areaUnderFunctionGraph = trapezeArea(y1, y2, dx);
-            area += areaUnderFunctionGraph;
-            yield new DOMPoint(x, -area);
+function integrate(expression, dx) {
+    return (minX, maxX) => {
+        let area = 0;
+        for (let n = 0; n < Math.floor((maxX - minX) / dx); n++) {
+            const x = minX + n * dx;
+            const y1 = expression(x);
+            const y2 = expression(x + dx);
+            if (!isNaN(y1) && isFinite(y1) && !isNaN(y2) && isFinite(y2)) {
+                const areaUnderFunctionGraph = trapezeArea(y1, y2, dx);
+                area += areaUnderFunctionGraph;
+            }
         }
+        return -area;
+    };
+}
+function area(expression, dx, minX, maxX) {
+    const integral = integrate(expression, dx);
+    return integral(minX, maxX);
+}
+function getFourierSeries(func, precision) {
+    const a0 = 1 / Math.PI * area(func, dx, -Math.PI, Math.PI) / 2;
+    const aFunc = (n) => {
+        return (x) => {
+            return func(x) * Math.sin(x * n);
+        };
+    };
+    const bFunc = (n) => {
+        return (x) => {
+            return func(x) * Math.cos(x * n);
+        };
+    };
+    let code = `${a0}`;
+    for (let i = 1; i < precision; i++) {
+        const a = 1 / Math.PI * area(aFunc(i), dx, -Math.PI, Math.PI);
+        const b = 1 / Math.PI * area(bFunc(i), dx, -Math.PI, Math.PI);
+        code += `+${a}*Math.sin(x*${i})+${b}*Math.cos(x*${i})`;
+    }
+    return code;
+}
+function* getFuncPoints(code, minX, maxX) {
+    const func = getJSFunction(code);
+    for (let x = minX; x < maxX; x += dx) {
+        yield new DOMPoint(x, func(x));
     }
 }
 function applyMatrix(point, matrix) {
@@ -55,8 +88,7 @@ function draw(context, path, axisCenter) {
     context.stroke(path);
 }
 function updateView(context, expression, minX, maxX, transform) {
-    const dx = 1e-3;
-    const path = getPath2D(integrate(expression, dx, minX, maxX), transform);
+    const path = getPath2D(getFuncPoints(getFourierSeries(expression, 100), minX, maxX), transform);
     draw(context, path, new DOMPoint(transform.e, transform.f));
 }
 window.onload = () => {
